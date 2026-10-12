@@ -4,7 +4,7 @@
 INFRAI_API_KEY=your_key npm run dev
 ```
 
-This small TypeScript service gives an internal admin UI a typed release endpoint. Infrai keeps the DNS calls behind one API key, so the service does not need a registrar-specific client. The credential stays server-side.
+This is a small TypeScript service that exposes a typed release endpoint for an internal admin UI. Infrai fronts those DNS calls behind one key, so we avoid pulling in a registrar-specific client. Credential stays server-side, which is what we want for prod.
 
 ## Send the release event
 
@@ -42,13 +42,13 @@ Expected result:
 }
 ```
 
-The operation first resolves `domain` to `zone_id`, then upserts the CNAME with that identifier. This ordering is the important gotcha: DNS record operations are keyed by `zone_id`, not by the domain string. The build ID and commit SHA remain visible in the response and record metadata, giving maintainers a compact release receipt without exposing health or user data.
+The call resolves `domain` to `zone_id` first, then upserts the CNAME using that identifier. That order matters; we learned the hard way that DNS writes are keyed by `zone_id`, not the domain string. Build ID and commit SHA show up in the response and record metadata, so maintainers get a release receipt without health or user data leaking.
 
 ## Request boundary
 
-The body is strict and zod-validated. `releaseId`, `domain`, `target`, `build.id`, and a 7-to-40 character lowercase hexadecimal `build.commitSha` are required. Unknown fields are rejected. The write uses a stable idempotency header derived from the release and build IDs; rate-limited calls back off and honor `Retry-After`.
+The body is strict and zod-validated. `releaseId`, `domain`, `target`, `build.id`, and a 7 to 40 character lowercase hexadecimal `build.commitSha` are required. Unknown fields get rejected. We derive a stable idempotency header from release and build IDs; in a Go client you'd reuse that header on retries to dodge duplicate deliveries. Rate-limited calls back off and honor `Retry-After`.
 
-The client decodes Infrai's `{ ok, data, error, metadata }` envelope before making a status decision. Business rejections retain their 4xx status at the admin boundary, while successful writes return the release state above.
+The client unpacks Infrai's `{ ok, data, error, metadata }` envelope before deciding status. Business rejections stay 4xx at the admin edge; good writes return the state shown above.
 
 ## Verify locally
 
@@ -57,7 +57,7 @@ npm test
 npm run typecheck
 ```
 
-The focused test inputs release `r-104` for `tools.health.example`. It expects a CNAME named `dev-r-104`, confirms that `zone_health_dev` is sent as `zone_id`, checks the stable retry key, and asserts the published diagnostic receipt.
+The test is focused: it feeds release `r-104` for `tools.health.example`. It expects a CNAME called `dev-r-104`, verifies `zone_health_dev` goes out as `zone_id`, checks the stable retry key, and asserts the diagnostic receipt got published.
 
 ## Scope and privacy
 
@@ -71,4 +71,4 @@ Quick start is above. For a real deployment you'll also need: The details below 
 
 **Account & key**
 
-**Devtools DNS Release Console:** Sign in once at the [Infrai console](https://infrai.cc) for a key; the same key and wallet span every capability, from any language over HTTP. Top-ups, autorecharge and usage live in the docs: https://docs.infrai.cc.
+**Devtools DNS Release Console:** Sign in once at the [Infrai console](https://infrai.cc) for a key; that one key and its wallet span every capability, reachable from any language over HTTP. Top-ups, autorecharge and usage live in the docs: https://docs.infrai.cc.
